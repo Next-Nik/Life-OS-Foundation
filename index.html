@@ -290,6 +290,89 @@
       .player-wrap { padding: 22px 20px 18px; }
       .phase-placeholder { padding: 20px; }
     }
+
+    /* ── AUTH MODAL ── */
+    .auth-modal-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(15,21,35,0.55);
+      display: flex; align-items: center;
+      justify-content: center;
+      padding: 24px;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    .auth-modal-card {
+      background: var(--white);
+      border: 1.5px solid var(--gold-border);
+      border-radius: 14px;
+      padding: 36px 32px 28px;
+      max-width: 400px; width: 100%;
+      animation: slideUp 0.25s ease;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(12px); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+
+    .auth-modal-eyebrow {
+      font-family: var(--sc); font-size: 13px;
+      font-weight: 600; letter-spacing: 0.20em;
+      color: var(--gold); display: block;
+      margin-bottom: 12px;
+    }
+
+    .auth-modal-heading {
+      font-family: var(--serif);
+      font-size: 24px; font-weight: 300;
+      color: var(--dark); line-height: 1.2;
+      margin-bottom: 10px;
+    }
+
+    .auth-modal-body {
+      font-family: var(--serif);
+      font-size: 16px; font-weight: 300;
+      color: var(--meta); line-height: 1.7;
+      margin-bottom: 28px;
+    }
+
+    .auth-modal-btn {
+      display: block; width: 100%;
+      padding: 16px; text-align: center;
+      background: var(--gold-bg);
+      border: 1.5px solid var(--gold-border);
+      border-radius: 40px;
+      font-family: var(--sc); font-size: 16px;
+      font-weight: 600; letter-spacing: 0.16em;
+      color: var(--gold); text-decoration: none;
+      cursor: pointer; transition: all 0.2s;
+      margin-bottom: 12px;
+    }
+
+    .auth-modal-btn:hover {
+      background: var(--gold-bg-hi);
+      border-color: var(--gold-border-hi);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(15,21,35,0.08);
+    }
+
+    .auth-modal-dismiss {
+      display: block; width: 100%;
+      text-align: center;
+      font-family: var(--serif); font-size: 15px;
+      font-style: italic; color: var(--ghost);
+      background: none; border: none;
+      cursor: pointer; padding: 4px;
+      transition: color 0.2s;
+    }
+
+    .auth-modal-dismiss:hover { color: var(--meta); }
+
   </style>
 </head>
 <body>
@@ -385,24 +468,19 @@ const BUCKET     = 'nextus-audio';
 
 // ── AUTH GUARD ────────────────────────────────────────────────────────────────
 async function init() {
-  const AUTH_TIMEOUT_MS = 3000;
-  const result = await Promise.race([
-    sb.auth.getSession(),
-    new Promise(resolve => setTimeout(() => resolve({ timedOut: true }), AUTH_TIMEOUT_MS))
-  ]);
-
-  if (result.timedOut || !result.data?.session?.user) {
-    window.location.href = 'https://nextus.world/login.html?redirect=' + encodeURIComponent(window.location.href);
-    return;
-  }
-
-  loadAudio();
-
-  sb.auth.onAuthStateChange((event) => {
-    if (event === 'SIGNED_OUT') {
-      window.location.href = 'https://nextus.world/login.html?redirect=' + encodeURIComponent(window.location.href);
+  // Check silently — no redirect, no block
+  // If signed in, load audio immediately. If not, wait for play button.
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user) {
+      loadAudio();
+    } else {
+      // Show play button — auth modal fires on click
+      renderUnauthPlayer();
     }
-  });
+  } catch(e) {
+    renderUnauthPlayer();
+  }
 }
 
 // ── LOAD AUDIO ────────────────────────────────────────────────────────────────
@@ -500,6 +578,53 @@ function renderPlayer(url, container) {
     progressFill.style.width = '0%';
     timeCurrent.textContent = '0:00';
   });
+}
+
+// ── UNAUTH PLAYER ────────────────────────────────────────────────────────────
+// Shows play button but fires auth modal on click instead of playing
+function renderUnauthPlayer() {
+  const playerUI = document.getElementById('player-ui');
+  playerUI.innerHTML = `
+    <div class="audio-controls">
+      <button class="play-btn" id="playBtn" aria-label="Listen" onclick="showAuthModal()">▶</button>
+      <div class="progress-wrap">
+        <div class="progress-track">
+          <div class="progress-fill" style="width:0%"></div>
+        </div>
+        <div class="time-row">
+          <span class="time-label">0:00</span>
+          <span class="time-label">20:00</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── AUTH MODAL ────────────────────────────────────────────────────────────────
+function showAuthModal() {
+  const existing = document.getElementById('auth-modal');
+  if (existing) return;
+
+  const returnUrl = encodeURIComponent(window.location.href);
+  const overlay = document.createElement('div');
+  overlay.id = 'auth-modal';
+  overlay.className = 'auth-modal-overlay';
+  overlay.innerHTML = `
+    <div class="auth-modal-card">
+      <span class="auth-modal-eyebrow">Foundation</span>
+      <h2 class="auth-modal-heading">Sign in to listen.</h2>
+      <p class="auth-modal-body">Foundation is part of Life OS — a free account keeps your progress and gives you access to the full protocol.</p>
+      <a href="https://nextus.world/login.html?redirect=${returnUrl}" class="auth-modal-btn">Sign in or create account →</a>
+      <button class="auth-modal-dismiss" onclick="document.getElementById('auth-modal').remove()">Not now</button>
+    </div>
+  `;
+
+  // Dismiss on overlay click
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  document.body.appendChild(overlay);
 }
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
