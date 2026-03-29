@@ -7,6 +7,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=Cormorant+SC:wght@400;600&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    window.SUPABASE_URL      = "https://tphbpwzozkskytoichho.supabase.co";
+    window.SUPABASE_ANON_KEY = "sb_publishable_M00GF1FWV5tgKHqmyRCZag_kJjgBJn-";
+  </script>
+  <script src="/auth-init.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -373,14 +378,52 @@
 
     .auth-modal-dismiss:hover { color: var(--meta); }
 
+
+    /* ── SITE NAV ── */
+    .nk-nav { position:fixed;top:0;left:0;right:0;z-index:1000;background:rgba(255,255,255,0.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--gold-rule); }
+    .nk-nav-inner { max-width:1040px;margin:0 auto;padding:0 40px;display:flex;align-items:center;justify-content:space-between;height:64px; }
+    .nk-nav-logo img { height:34px;width:auto;display:block; }
+    .nk-nav-links { display:flex;align-items:center;gap:40px; }
+    .nk-nav-links a { font-family:var(--sc);font-size:13px;letter-spacing:0.10em;color:var(--meta);text-decoration:none;transition:color 0.2s; }
+    .nk-nav-links a:hover { color:var(--dark); }
+    .nk-nav-links a.active { color:var(--gold); }
+    .nk-hamburger { display:none;flex-direction:column;gap:5px;cursor:pointer;background:none;border:none;padding:4px; }
+    .nk-hamburger span { display:block;width:22px;height:1.5px;background:var(--meta);border-radius:1px; }
+    .nk-mobile-menu { display:none;flex-direction:column;background:#FFFFFF;border-bottom:1px solid var(--gold-rule);padding:8px 0; }
+    .nk-mobile-menu.open { display:flex; }
+    .nk-mobile-menu a { font-family:var(--sc);font-size:13px;letter-spacing:0.10em;color:var(--dark);text-decoration:none;padding:14px 32px;border-bottom:1px solid var(--gold-faint); }
+    .nk-profile-dot { width:32px;height:32px;border-radius:50%;background:var(--gold-bg);border:1.5px solid var(--gold-border);display:flex;align-items:center;justify-content:center;font-family:var(--sc);font-size:13px;font-weight:600;color:var(--gold);text-decoration:none;flex-shrink:0;transition:all 0.2s; }
+    .nk-profile-dot:hover { background:var(--gold-bg-hi);border-color:var(--gold-border-hi);transform:translateY(-1px); }
+    body { padding-top: 64px; }
+    @media (max-width:640px) { .nk-nav-inner { padding:0 24px; } .nk-nav-links { display:none; } .nk-hamburger { display:flex; } }
   </style>
 </head>
 <body>
 
-<nav class="nav">
-  <a class="nav-logo" href="https://nextus.world">NextUs</a>
-  <a class="nav-back" href="https://nextus.world/life-os.html">← Life OS</a>
+<nav class="nk-nav">
+  <div class="nk-nav-inner">
+    <a href="https://nextus.world/index.html" class="nk-nav-logo"><img src="https://nextus.world/logo_nav.png" alt="NextUs"></a>
+    <div class="nk-nav-links">
+      <a href="https://nextus.world/index.html">Home</a>
+      <a href="https://nextus.world/life-os.html" class="active">Life OS</a>
+      <a href="https://nextus.world/nextus.html">NextUs</a>
+      <a href="https://nextus.world/work-with-nik.html">Work with Nik</a>
+      <a href="https://nextus.world/about.html">About</a>
+      <a href="https://nextus.world/podcast.html">Podcast</a>
+    </div>
+    <a href="https://nextus.world/login.html" class="nk-profile-dot" id="nk-profile-dot" title="Sign in">→</a>
+    <button class="nk-hamburger" aria-label="Menu" onclick="this.classList.toggle('open');document.getElementById('nk-mob').classList.toggle('open');"><span></span><span></span><span></span></button>
+  </div>
 </nav>
+<div id="nk-mob" class="nk-mobile-menu">
+  <a href="https://nextus.world/index.html">Home</a>
+  <a href="https://nextus.world/life-os.html">Life OS</a>
+  <a href="https://nextus.world/nextus.html">NextUs</a>
+  <a href="https://nextus.world/work-with-nik.html">Work with Nik</a>
+  <a href="https://nextus.world/about.html">About</a>
+  <a href="https://nextus.world/podcast.html">Podcast</a>
+  <a href="https://nextus.world/login.html">Sign in →</a>
+</div>
 
 <div class="page">
 
@@ -459,34 +502,36 @@
 
 <script>
 // ── CONFIG ────────────────────────────────────────────────────────────────────
-const SB_URL = 'https://tphbpwzozkskytoichho.supabase.co';
-const SB_KEY = 'sb_publishable_M00GF1FWV5tgKHqmyRCZag_kJjgBJn-';
-const sb     = window.supabase.createClient(SB_URL, SB_KEY);
-
 const AUDIO_FILE = 'foundation-baseline.mp3';
 const BUCKET     = 'nextus-audio';
 
-// ── AUTH GUARD ────────────────────────────────────────────────────────────────
-async function init() {
-  // Check silently — no redirect, no block
-  // If signed in, load audio immediately. If not, wait for play button.
-  try {
-    const { data: { session } } = await sb.auth.getSession();
-    if (session?.user) {
+// ── AUTH INIT — listens for cross-domain session from auth-init.js ───────────
+function init() {
+  // auth-init.js fires 'lifeos:auth' when session check completes
+  window.addEventListener('lifeos:auth', (e) => {
+    const user = e.detail?.user;
+    if (user) {
       loadAudio();
     } else {
-      // Show play button — auth modal fires on click
       renderUnauthPlayer();
     }
-  } catch(e) {
-    renderUnauthPlayer();
-  }
+    // Update profile dot
+    const dot = document.getElementById('nk-profile-dot');
+    if (dot && user) {
+      const initial = (user.email?.split('@')[0]?.charAt(0) || '?').toUpperCase();
+      dot.textContent = initial;
+      dot.href = 'https://nextus.world/profile.html';
+      dot.title = 'Your profile';
+    }
+  }, { once: true });
 }
 
 // ── LOAD AUDIO ────────────────────────────────────────────────────────────────
 async function loadAudio() {
   const playerUI = document.getElementById('player-ui');
 
+  const sb = window._sb;
+  if (!sb) { document.getElementById('player-ui').innerHTML = '<p class="player-error">Not signed in.</p>'; return; }
   try {
     const { data, error } = await sb.storage
       .from(BUCKET)
