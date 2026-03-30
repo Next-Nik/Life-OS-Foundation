@@ -505,45 +505,71 @@
 const AUDIO_FILE = 'foundation-baseline.mp3';
 const BUCKET     = 'nextus-audio';
 
-// ── AUTH INIT — listens for cross-domain session from auth-init.js ───────────
+// ── AUTH INIT — handles race between auth-init.js and DOMContentLoaded ───────
+function handleAuth(user) {
+  if (user) {
+    loadAudio();
+  } else {
+    renderUnauthPlayer();
+  }
+  // Update profile dot
+  const dot = document.getElementById('nk-profile-dot');
+  if (dot && user) {
+    const initial = (user.email?.split('@')[0]?.charAt(0) || '?').toUpperCase();
+    dot.textContent = initial;
+    dot.href = 'https://nextus.world/profile.html';
+    dot.title = 'Your profile';
+    dot.style.display = 'flex';
+  }
+}
+
 function init() {
-  // auth-init.js fires 'lifeos:auth' when session check completes
+  // If auth-init.js already fired before DOMContentLoaded, use the result directly
+  if (window.LIFEOS_USER !== undefined) {
+    handleAuth(window.LIFEOS_USER || null);
+    return;
+  }
+  // Otherwise wait for the event
   window.addEventListener('lifeos:auth', (e) => {
-    const user = e.detail?.user;
-    if (user) {
-      loadAudio();
-    } else {
-      renderUnauthPlayer();
-    }
-    // Update profile dot
-    const dot = document.getElementById('nk-profile-dot');
-    if (dot && user) {
-      const initial = (user.email?.split('@')[0]?.charAt(0) || '?').toUpperCase();
-      dot.textContent = initial;
-      dot.href = 'https://nextus.world/profile.html';
-      dot.title = 'Your profile';
-      dot.style.display = 'flex';
-    }
+    handleAuth(e.detail?.user || null);
   }, { once: true });
+
+  // Safety net — if event never fires (e.g. auth-init.js failed), fail open after 4s
+  setTimeout(() => {
+    if (!document.getElementById('player-ui')?.querySelector('.audio-controls, .player-error')) {
+      loadAudio();
+    }
+  }, 4000);
 }
 
 // ── LOAD AUDIO ────────────────────────────────────────────────────────────────
 async function loadAudio() {
   const playerUI = document.getElementById('player-ui');
 
-  // Use _sb from auth-init.js, or create a fresh client if not ready yet
   const sb = window._sb || (window.supabase && window.SUPABASE_URL
     ? window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
         auth: { storage: window.localStorage, persistSession: true, detectSessionInUrl: true }
       })
     : null);
-  if (!sb) { document.getElementById('player-ui').innerHTML = '<p class="player-error">Not signed in.</p>'; return; }
+
+  if (!sb) {
+    playerUI.innerHTML = '<p class="player-error">Unable to connect. Please refresh the page.</p>';
+    return;
+  }
+
   try {
     const { data, error } = await sb.storage
       .from(BUCKET)
       .createSignedUrl(AUDIO_FILE, 3600);
 
-    if (error || !data?.signedUrl) {
+    if (error) {
+      console.error('[Foundation] Storage error:', error.message, error);
+      playerUI.innerHTML = '<p class="player-error">Unable to load audio. Please try again shortly.</p>';
+      return;
+    }
+
+    if (!data?.signedUrl) {
+      console.error('[Foundation] No signed URL returned');
       playerUI.innerHTML = '<p class="player-error">Unable to load audio. Please try again shortly.</p>';
       return;
     }
@@ -551,6 +577,7 @@ async function loadAudio() {
     renderPlayer(data.signedUrl, playerUI);
 
   } catch(e) {
+    console.error('[Foundation] Unexpected error:', e);
     playerUI.innerHTML = '<p class="player-error">Something went wrong. Please refresh the page.</p>';
   }
 }
