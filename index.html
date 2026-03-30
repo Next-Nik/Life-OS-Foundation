@@ -25,8 +25,8 @@
       --gold-bg:      rgba(200,146,42,0.05);
       --gold-bg-hi:   rgba(200,146,42,0.08);
       --dark:         #0F1523;
-      --meta:         rgba(15,21,35,0.88);
-      --ghost:        rgba(15,21,35,0.72);
+      --meta:         rgba(15,21,35,0.78);
+      --ghost:        rgba(15,21,35,0.28);
       --white:        #FFFFFF;
       --serif:        'Cormorant Garamond', Georgia, serif;
       --sc:           'Cormorant SC', Georgia, serif;
@@ -383,7 +383,7 @@
     .nk-nav { position:fixed;top:0;left:0;right:0;z-index:1000;background:rgba(255,255,255,0.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--gold-rule); }
     .nk-nav-inner { max-width:1040px;margin:0 auto;padding:0 40px;display:flex;align-items:center;justify-content:space-between;height:64px; }
     .nk-nav-logo img { height:34px;width:auto;display:block; }
-    .nk-nav-links { display:flex;align-items:center;gap:28px; }
+    .nk-nav-links { display:flex;align-items:center;gap:40px; }
     .nk-nav-links a { font-family:var(--sc);font-size:13px;letter-spacing:0.10em;color:var(--meta);text-decoration:none;transition:color 0.2s; }
     .nk-nav-links a:hover { color:var(--dark); }
     .nk-nav-links a.active { color:var(--gold); }
@@ -411,7 +411,7 @@
       <a href="https://nextus.world/about.html">About</a>
       <a href="https://nextus.world/podcast.html">Podcast</a>
     </div>
-    <a href="https://nextus.world/login.html" class="nk-profile-dot" id="nk-profile-dot" title="Sign in" style="display:none;">&#8594;</a>
+    <a href="https://nextus.world/login.html" class="nk-profile-dot" id="nk-profile-dot" title="Sign in">→</a>
     <button class="nk-hamburger" aria-label="Menu" onclick="this.classList.toggle('open');document.getElementById('nk-mob').classList.toggle('open');"><span></span><span></span><span></span></button>
   </div>
 </nav>
@@ -422,7 +422,7 @@
   <a href="https://nextus.world/work-with-nik.html">Work with Nik</a>
   <a href="https://nextus.world/about.html">About</a>
   <a href="https://nextus.world/podcast.html">Podcast</a>
-  <a href="https://nextus.world/login.html">Sign in &#8594;</a>
+  <a href="https://nextus.world/login.html">Sign in →</a>
 </div>
 
 <div class="page">
@@ -505,71 +505,39 @@
 const AUDIO_FILE = 'foundation-baseline.mp3';
 const BUCKET     = 'nextus-audio';
 
-// ── AUTH INIT — handles race between auth-init.js and DOMContentLoaded ───────
-function handleAuth(user) {
-  if (user) {
-    loadAudio();
-  } else {
-    renderUnauthPlayer();
-  }
-  // Update profile dot
-  const dot = document.getElementById('nk-profile-dot');
-  if (dot && user) {
-    const initial = (user.email?.split('@')[0]?.charAt(0) || '?').toUpperCase();
-    dot.textContent = initial;
-    dot.href = 'https://nextus.world/profile.html';
-    dot.title = 'Your profile';
-    dot.style.display = 'flex';
-  }
-}
-
+// ── AUTH INIT — listens for cross-domain session from auth-init.js ───────────
 function init() {
-  // If auth-init.js already fired before DOMContentLoaded, use the result directly
-  if (window.LIFEOS_USER !== undefined) {
-    handleAuth(window.LIFEOS_USER || null);
-    return;
-  }
-  // Otherwise wait for the event
+  // auth-init.js fires 'lifeos:auth' when session check completes
   window.addEventListener('lifeos:auth', (e) => {
-    handleAuth(e.detail?.user || null);
-  }, { once: true });
-
-  // Safety net — if event never fires (e.g. auth-init.js failed), fail open after 4s
-  setTimeout(() => {
-    if (!document.getElementById('player-ui')?.querySelector('.audio-controls, .player-error')) {
+    const user = e.detail?.user;
+    if (user) {
       loadAudio();
+    } else {
+      renderUnauthPlayer();
     }
-  }, 4000);
+    // Update profile dot
+    const dot = document.getElementById('nk-profile-dot');
+    if (dot && user) {
+      const initial = (user.email?.split('@')[0]?.charAt(0) || '?').toUpperCase();
+      dot.textContent = initial;
+      dot.href = 'https://nextus.world/profile.html';
+      dot.title = 'Your profile';
+    }
+  }, { once: true });
 }
 
 // ── LOAD AUDIO ────────────────────────────────────────────────────────────────
 async function loadAudio() {
   const playerUI = document.getElementById('player-ui');
 
-  const sb = window._sb || (window.supabase && window.SUPABASE_URL
-    ? window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
-        auth: { storage: window.localStorage, persistSession: true, detectSessionInUrl: true }
-      })
-    : null);
-
-  if (!sb) {
-    playerUI.innerHTML = '<p class="player-error">Unable to connect. Please refresh the page.</p>';
-    return;
-  }
-
+  const sb = window._sb;
+  if (!sb) { document.getElementById('player-ui').innerHTML = '<p class="player-error">Not signed in.</p>'; return; }
   try {
     const { data, error } = await sb.storage
       .from(BUCKET)
       .createSignedUrl(AUDIO_FILE, 3600);
 
-    if (error) {
-      console.error('[Foundation] Storage error:', error.message, error);
-      playerUI.innerHTML = '<p class="player-error">Unable to load audio. Please try again shortly.</p>';
-      return;
-    }
-
-    if (!data?.signedUrl) {
-      console.error('[Foundation] No signed URL returned');
+    if (error || !data?.signedUrl) {
       playerUI.innerHTML = '<p class="player-error">Unable to load audio. Please try again shortly.</p>';
       return;
     }
@@ -577,7 +545,6 @@ async function loadAudio() {
     renderPlayer(data.signedUrl, playerUI);
 
   } catch(e) {
-    console.error('[Foundation] Unexpected error:', e);
     playerUI.innerHTML = '<p class="player-error">Something went wrong. Please refresh the page.</p>';
   }
 }
